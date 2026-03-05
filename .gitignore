@@ -1,0 +1,9 @@
+venv/
+credentials.json
+token.json
+state.json
+scorekeeper.log
+__pycache__/
+*.pyc
+.DS_Store
+.claude/
