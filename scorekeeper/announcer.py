@@ -36,10 +36,39 @@ def _read_tab(service, sheet_id: str, tab: str) -> list[dict]:
     return records
 
 
-def _build_message(month_label: str, winner_row: dict, monthly_rows: list[dict]) -> str:
+def _count_daily_wins(daily_rows: list[dict], month_label: str) -> dict[str, dict[str, int]]:
+    """
+    Count outright and tied wins per player per game for a given month.
+    Returns {player: {'Wordle_outright': N, 'Wordle_tied': N, 'Connections_outright': N, 'Connections_tied': N}}.
+    """
+    counts: dict[str, dict[str, int]] = defaultdict(lambda: {
+        'Wordle_outright': 0, 'Wordle_tied': 0,
+        'Connections_outright': 0, 'Connections_tied': 0,
+    })
+    for row in daily_rows:
+        date_str = row.get('Date', '')
+        if not date_str.startswith(month_label):
+            continue
+        game = row.get('Game', '')
+        if game not in ('Wordle', 'Connections'):
+            continue
+        winners_str = row.get('Winner(s)', '')
+        if not winners_str or winners_str in ('No winner', 'No winner (all X)'):
+            continue
+        winners = [w.strip() for w in winners_str.split(', ') if w.strip()]
+        tied = len(winners) > 1
+        for winner in winners:
+            key = f"{game}_{'tied' if tied else 'outright'}"
+            counts[winner][key] += 1
+    return counts
+
+
+def _build_message(month_label: str, winner_row: dict, monthly_rows: list[dict],
+                   daily_rows: list[dict]) -> str:
     month_name = _month_display(month_label)
     conn_winner = winner_row.get('Connections', 'N/A')
     wordle_winner = winner_row.get('Wordle', 'N/A')
+    daily_wins = _count_daily_wins(daily_rows, month_label)
 
     lines = [
         f"{month_name} Results",
@@ -52,13 +81,19 @@ def _build_message(month_label: str, winner_row: dict, monthly_rows: list[dict])
 
     for row in sorted(monthly_rows, key=lambda r: r.get('Name', '')):
         name = row.get('Name', '')
-        cw = row.get('Connections Won', '0')
         cc = row.get('Connections Completed', '0')
-        ww = row.get('Wordles Won', '0')
+        cs = row.get('Connections Won', '0')  # successfully solved
         wc = row.get('Wordles Completed', '0')
-        lines.append(
-            f"  {name}: Wordle {ww}/{wc}, Connections {cw}/{cc}"
-        )
+        ws = row.get('Wordles Won', '0')      # successfully solved
+        cw = daily_wins.get(name, {}).get('Connections', 0)  # won daily matchup
+        ww = daily_wins.get(name, {}).get('Wordle', 0)       # won daily matchup
+        wo = daily_wins.get(name, {}).get('Wordle_outright', 0)
+        wt = daily_wins.get(name, {}).get('Wordle_tied', 0)
+        co = daily_wins.get(name, {}).get('Connections_outright', 0)
+        ct = daily_wins.get(name, {}).get('Connections_tied', 0)
+        lines.append(f"  {name}:")
+        lines.append(f"    Wordle: played {wc}, completed {ws}, won outright {wo}, won tied {wt}")
+        lines.append(f"    Connections: played {cc}, completed {cs}, won outright {co}, won tied {ct}")
 
     return "\n".join(lines)
 
@@ -111,6 +146,8 @@ def maybe_announce(service, sheet_id: str, chat_name: str) -> bool:
     if not last_month_rows:
         return False
 
-    message = _build_message(month_label, winner_row, last_month_rows)
+    daily_records = _read_tab(service, sheet_id, 'Daily')
+
+    message = _build_message(month_label, winner_row, last_month_rows, daily_records)
     _send_imessage(chat_name, message)
     return True
