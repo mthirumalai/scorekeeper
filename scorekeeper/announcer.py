@@ -64,12 +64,23 @@ def _build_message(month_label: str, winner_row: dict, monthly_rows: list[dict])
 
 
 def _send_imessage(chat_name: str, message: str) -> None:
-    # Escape backslashes and double-quotes for AppleScript string
-    safe_message = message.replace('\\', '\\\\').replace('"', '\\"')
+    # Build AppleScript string with newlines as (ASCII character 13)
+    escaped = message.replace('\\', '\\\\').replace('"', '\\"')
+    as_lines = '" & (ASCII character 13) & "'.join(escaped.split('\n'))
     script = f'''
 tell application "Messages"
-    set theChat to first item of (chats whose display name is "{chat_name}")
-    send "{safe_message}" to theChat
+    set theMsg to "{as_lines}"
+    set theChat to missing value
+    repeat with c in chats
+        if name of c is "{chat_name}" then
+            set theChat to c
+            exit repeat
+        end if
+    end repeat
+    if theChat is missing value then
+        error "Chat not found: {chat_name}"
+    end if
+    send theMsg to theChat
 end tell
 '''
     result = subprocess.run(
