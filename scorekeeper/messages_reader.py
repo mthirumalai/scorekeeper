@@ -1,9 +1,8 @@
 import sqlite3
 import struct
 from datetime import datetime, timedelta
+from pathlib import Path
 from typing import Iterator
-
-CHAT_DB_PATH = "file:///Users/{user}/Library/Messages/chat.db?mode=ro"
 MAC_EPOCH = datetime(2001, 1, 1)
 
 QUERY = """
@@ -68,10 +67,8 @@ def _extract_attributed_body_text(blob: bytes) -> str | None:
 
 
 def get_messages(chat_name: str, since_rowid: int, db_path: str | None = None) -> Iterator[dict]:
-    import os
     if db_path is None:
-        username = os.environ.get('USER', os.environ.get('LOGNAME', 'unknown'))
-        db_path = f"file:///Users/{username}/Library/Messages/chat.db?mode=ro"
+        db_path = f"file://{Path.home()}/Library/Messages/chat.db?mode=ro"
 
     try:
         conn = sqlite3.connect(db_path, uri=True)
