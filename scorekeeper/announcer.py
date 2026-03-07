@@ -15,6 +15,12 @@ def _previous_month_label() -> str:
     return f"{today.year}-{today.month - 1:02d}"
 
 
+def _current_month_label() -> str:
+    """Returns 'YYYY-MM' for the current month."""
+    today = date.today()
+    return f"{today.year}-{today.month:02d}"
+
+
 def _month_display(label: str) -> str:
     """'2026-02' -> 'February 2026'"""
     return datetime.strptime(label, '%Y-%m').strftime('%B %Y')
@@ -124,6 +130,53 @@ end tell
     )
     if result.returncode != 0:
         raise RuntimeError(f"AppleScript error: {result.stderr.strip()}")
+
+
+def _build_daily_stats_message(month_label: str, monthly_rows: list[dict],
+                               daily_rows: list[dict]) -> str:
+    month_name = _month_display(month_label)
+    daily_wins = _count_daily_wins(daily_rows, month_label)
+
+    lines = [
+        f"{month_name} Stats (so far)",
+        "",
+        "Stats:",
+    ]
+
+    for row in sorted(monthly_rows, key=lambda r: r.get('Name', '')):
+        name = row.get('Name', '')
+        cc = row.get('Connections Completed', '0')
+        cs = row.get('Connections Won', '0')
+        wc = row.get('Wordles Completed', '0')
+        ws = row.get('Wordles Won', '0')
+        wo = daily_wins.get(name, {}).get('Wordle_outright', 0)
+        wt = daily_wins.get(name, {}).get('Wordle_tied', 0)
+        co = daily_wins.get(name, {}).get('Connections_outright', 0)
+        ct = daily_wins.get(name, {}).get('Connections_tied', 0)
+        lines.append(f"  {name}:")
+        lines.append(f"    Wordle: played {wc}, completed {ws}, won outright {wo}, won tied {wt}")
+        lines.append(f"    Connections: played {cc}, completed {cs}, won outright {co}, won tied {ct}")
+
+    return "\n".join(lines)
+
+
+def announce_daily_stats(service, sheet_id: str, chat_name: str) -> bool:
+    """
+    Sends the current month's running stats to the iMessage group chat every day.
+    Returns True if an announcement was sent.
+    """
+    month_label = _current_month_label()
+
+    monthly_records = _read_tab(service, sheet_id, 'Monthly')
+    current_month_rows = [r for r in monthly_records if r.get('Month') == month_label]
+    if not current_month_rows:
+        return False
+
+    daily_records = _read_tab(service, sheet_id, 'Daily')
+
+    message = _build_daily_stats_message(month_label, current_month_rows, daily_records)
+    _send_imessage(chat_name, message)
+    return True
 
 
 def maybe_announce(service, sheet_id: str, chat_name: str) -> bool:

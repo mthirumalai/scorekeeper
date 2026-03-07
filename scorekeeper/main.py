@@ -8,7 +8,7 @@ import sys
 
 import yaml
 
-from .announcer import maybe_announce
+from .announcer import announce_daily_stats, maybe_announce
 from .messages_reader import get_messages
 from .parser import parse_score
 from .sheets_writer import append_scores, ensure_header, get_service
@@ -124,6 +124,13 @@ def run() -> None:
             log.info("Monthly announcement sent to iMessage group chat.")
     except Exception as e:
         log.error(f"Failed to send monthly announcement: {e}")
+
+    try:
+        sent = announce_daily_stats(service, sheet_id, chat_name)
+        if sent:
+            log.info("Daily stats announcement sent to iMessage group chat.")
+    except Exception as e:
+        log.error(f"Failed to send daily stats announcement: {e}")
 
 
 if __name__ == '__main__':
