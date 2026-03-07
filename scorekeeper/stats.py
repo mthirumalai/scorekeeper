@@ -46,19 +46,22 @@ def _wordle_attempts(result: str) -> int | None:
 
 def compute_daily_winners(records: list[dict]) -> list[list]:
     """
-    For each (Date, Game, Puzzle #), determine the winner(s).
+    For each (Game, Puzzle #), determine the winner(s).
+    Uses the earliest Date seen for that puzzle as the canonical date.
     Returns rows ready to write to the Daily sheet.
     """
-    # Group by (date, game, puzzle_num)
+    # Group by (game, puzzle_num) — puzzle number uniquely identifies a puzzle
     groups: dict[tuple, list[dict]] = defaultdict(list)
     for r in records:
-        key = (r['Date'], r['Game'], r['Puzzle #'])
+        key = (r['Game'], r['Puzzle #'])
         groups[key].append(r)
 
     daily_rows = []
-    for (date, game, puzzle_num), entries in sorted(groups.items()):
+    for (game, puzzle_num), entries in sorted(groups.items(), key=lambda x: int(x[0][1]) if x[0][1].isdigit() else 0):
+        # Use the earliest date among all players' entries for this puzzle
+        date = min(e['Date'] for e in entries)
+
         if game == 'Wordle':
-            # Find min attempts, excluding X
             scored = [(e['Player'], _wordle_attempts(e['Result'])) for e in entries]
             scored = [(p, a) for p, a in scored if a is not None]
             if not scored:
@@ -69,7 +72,6 @@ def compute_daily_winners(records: list[dict]) -> list[list]:
                 score_str = f'{min_attempts}/6'
 
         elif game == 'Connections':
-            # Winners: Won=TRUE with lowest mistakes
             won_entries = [e for e in entries if e.get('Won') == 'TRUE']
             if not won_entries:
                 winners, score_str = ['No winner'], 'N/A'
