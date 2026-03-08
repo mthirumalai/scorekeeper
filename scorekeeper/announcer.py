@@ -69,12 +69,61 @@ def _count_daily_wins(daily_rows: list[dict], month_label: str) -> dict[str, dic
     return counts
 
 
+def _build_table(game: str, player_stats: list[dict]) -> list[str]:
+    """Build a fixed-width ASCII table for one game."""
+    cols = ['Player', 'Played', 'Completed', 'Won outright', 'Won tied', 'Won total']
+    rows = []
+    for s in player_stats:
+        total = s['outright'] + s['tied']
+        rows.append([s['name'], str(s['played']), str(s['completed']),
+                     str(s['outright']), str(s['tied']), str(total)])
+
+    # Compute column widths
+    widths = [len(c) for c in cols]
+    for row in rows:
+        for i, cell in enumerate(row):
+            widths[i] = max(widths[i], len(cell))
+
+    def fmt_row(cells):
+        return ' | '.join(c.ljust(widths[i]) for i, c in enumerate(cells))
+
+    sep = '-+-'.join('-' * w for w in widths)
+    lines = [game, fmt_row(cols), sep]
+    for row in rows:
+        lines.append(fmt_row(row))
+    return lines
+
+
+def _collect_player_stats(monthly_rows: list[dict], daily_wins: dict) -> tuple[list, list]:
+    """Returns (wordle_stats, connections_stats) lists sorted by player name."""
+    wordle_stats, conn_stats = [], []
+    for row in sorted(monthly_rows, key=lambda r: r.get('Name', '')):
+        name = row.get('Name', '')
+        dw = daily_wins.get(name, {})
+        wordle_stats.append({
+            'name': name,
+            'played': int(row.get('Wordles Completed', 0)),
+            'completed': int(row.get('Wordles Won', 0)),
+            'outright': dw.get('Wordle_outright', 0),
+            'tied': dw.get('Wordle_tied', 0),
+        })
+        conn_stats.append({
+            'name': name,
+            'played': int(row.get('Connections Completed', 0)),
+            'completed': int(row.get('Connections Won', 0)),
+            'outright': dw.get('Connections_outright', 0),
+            'tied': dw.get('Connections_tied', 0),
+        })
+    return wordle_stats, conn_stats
+
+
 def _build_message(month_label: str, winner_row: dict, monthly_rows: list[dict],
                    daily_rows: list[dict]) -> str:
     month_name = _month_display(month_label)
     conn_winner = winner_row.get('Connections', 'N/A')
     wordle_winner = winner_row.get('Wordle', 'N/A')
     daily_wins = _count_daily_wins(daily_rows, month_label)
+    wordle_stats, conn_stats = _collect_player_stats(monthly_rows, daily_wins)
 
     lines = [
         f"{month_name} Results",
@@ -82,24 +131,10 @@ def _build_message(month_label: str, winner_row: dict, monthly_rows: list[dict],
         f"Wordle Champion: {wordle_winner}",
         f"Connections Champion: {conn_winner}",
         "",
-        "Stats:",
     ]
-
-    for row in sorted(monthly_rows, key=lambda r: r.get('Name', '')):
-        name = row.get('Name', '')
-        cc = row.get('Connections Completed', '0')
-        cs = row.get('Connections Won', '0')  # successfully solved
-        wc = row.get('Wordles Completed', '0')
-        ws = row.get('Wordles Won', '0')      # successfully solved
-        cw = daily_wins.get(name, {}).get('Connections', 0)  # won daily matchup
-        ww = daily_wins.get(name, {}).get('Wordle', 0)       # won daily matchup
-        wo = daily_wins.get(name, {}).get('Wordle_outright', 0)
-        wt = daily_wins.get(name, {}).get('Wordle_tied', 0)
-        co = daily_wins.get(name, {}).get('Connections_outright', 0)
-        ct = daily_wins.get(name, {}).get('Connections_tied', 0)
-        lines.append(f"  {name}:")
-        lines.append(f"    Wordle: played {wc}, completed {ws}, won outright {wo}, won tied {wt}")
-        lines.append(f"    Connections: played {cc}, completed {cs}, won outright {co}, won tied {ct}")
+    lines += _build_table('WORDLE', wordle_stats)
+    lines.append("")
+    lines += _build_table('CONNECTIONS', conn_stats)
 
     return "\n".join(lines)
 
@@ -136,26 +171,12 @@ def _build_daily_stats_message(month_label: str, monthly_rows: list[dict],
                                daily_rows: list[dict]) -> str:
     month_name = _month_display(month_label)
     daily_wins = _count_daily_wins(daily_rows, month_label)
+    wordle_stats, conn_stats = _collect_player_stats(monthly_rows, daily_wins)
 
-    lines = [
-        f"{month_name} Stats (so far)",
-        "",
-        "Stats:",
-    ]
-
-    for row in sorted(monthly_rows, key=lambda r: r.get('Name', '')):
-        name = row.get('Name', '')
-        cc = row.get('Connections Completed', '0')
-        cs = row.get('Connections Won', '0')
-        wc = row.get('Wordles Completed', '0')
-        ws = row.get('Wordles Won', '0')
-        wo = daily_wins.get(name, {}).get('Wordle_outright', 0)
-        wt = daily_wins.get(name, {}).get('Wordle_tied', 0)
-        co = daily_wins.get(name, {}).get('Connections_outright', 0)
-        ct = daily_wins.get(name, {}).get('Connections_tied', 0)
-        lines.append(f"  {name}:")
-        lines.append(f"    Wordle: played {wc}, completed {ws}, won outright {wo}, won tied {wt}")
-        lines.append(f"    Connections: played {cc}, completed {cs}, won outright {co}, won tied {ct}")
+    lines = [f"{month_name} Stats (so far)", ""]
+    lines += _build_table('WORDLE', wordle_stats)
+    lines.append("")
+    lines += _build_table('CONNECTIONS', conn_stats)
 
     return "\n".join(lines)
 
