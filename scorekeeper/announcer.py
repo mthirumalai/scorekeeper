@@ -71,12 +71,11 @@ def _count_daily_wins(daily_rows: list[dict], month_label: str) -> dict[str, dic
 
 def _build_table(game: str, player_stats: list[dict]) -> list[str]:
     """Build a fixed-width ASCII table for one game."""
-    cols = ['Player', 'Played', 'Completed', 'Won outright', 'Won tied', 'Won total']
+    cols = ['Player', 'Won outright', 'Won tied', 'Won total']
     rows = []
     for s in player_stats:
         total = s['outright'] + s['tied']
-        rows.append([s['name'], str(s['played']), str(s['completed']),
-                     str(s['outright']), str(s['tied']), str(total)])
+        rows.append([s['name'], str(s['outright']), str(s['tied']), str(total)])
 
     # Compute column widths
     widths = [len(c) for c in cols]

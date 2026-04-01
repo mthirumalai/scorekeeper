@@ -129,30 +129,73 @@ def compute_monthly_stats(records: list[dict]) -> list[list]:
     return rows
 
 
-def compute_monthly_winners(monthly_rows: list[list]) -> list[list]:
+def compute_monthly_winners(service, sheet_id: str) -> list[list]:
     """
-    From Monthly stats rows, find the winner per month per game.
-    monthly_rows columns: Month, Name, Connections Won, Wordles Won, ...
+    Find the monthly winner per game based on daily competition wins.
+    Uses the Daily sheet to count outright + tied wins per player per month per game.
     Returns rows for the Winner sheet: Month | Connections | Wordle
     """
-    # month -> {player: {connections_won, wordles_won}}
-    by_month: dict[str, dict[str, dict]] = defaultdict(dict)
-    for row in monthly_rows:
-        month, name, conn_won, wordle_won = row[0], row[1], row[2], row[3]
-        by_month[month][name] = {
-            'connections_won': int(conn_won),
-            'wordles_won': int(wordle_won),
-        }
+    # Read daily winners data
+    result = service.spreadsheets().values().get(
+        spreadsheetId=sheet_id,
+        range=f'{DAILY_TAB}!A:E',
+    ).execute()
+    rows = result.get('values', [])
+    if len(rows) < 2:
+        return []
 
+    headers = rows[0]
+    daily_records = []
+    for row in rows[1:]:
+        row += [''] * (len(headers) - len(row))
+        daily_records.append(dict(zip(headers, row)))
+
+    # Count daily wins per month per player per game
+    # month -> game -> player -> win_count
+    monthly_wins: dict[str, dict[str, dict[str, int]]] = defaultdict(lambda: defaultdict(lambda: defaultdict(int)))
+
+    for record in daily_records:
+        date_str = record.get('Date', '')
+        if not date_str:
+            continue
+
+        try:
+            month = datetime.strptime(date_str, '%Y-%m-%d').strftime('%Y-%m')
+        except ValueError:
+            continue
+
+        game = record.get('Game', '')
+        if game not in ('Wordle', 'Connections'):
+            continue
+
+        winners_str = record.get('Winner(s)', '')
+        if not winners_str or winners_str in ('No winner', 'No winner (all X)'):
+            continue
+
+        winners = [w.strip() for w in winners_str.split(', ') if w.strip()]
+        for winner in winners:
+            monthly_wins[month][game][winner] += 1
+
+    # Determine monthly champions
     winner_rows = []
-    for month in sorted(by_month):
-        players = by_month[month]
+    for month in sorted(monthly_wins.keys()):
+        games_data = monthly_wins[month]
 
-        max_conn = max(s['connections_won'] for s in players.values())
-        conn_winners = [p for p, s in players.items() if s['connections_won'] == max_conn]
+        # Find Connections champions
+        conn_counts = games_data.get('Connections', {})
+        if conn_counts:
+            max_conn = max(conn_counts.values())
+            conn_winners = [p for p, count in conn_counts.items() if count == max_conn]
+        else:
+            conn_winners = ['No data']
 
-        max_wordle = max(s['wordles_won'] for s in players.values())
-        wordle_winners = [p for p, s in players.items() if s['wordles_won'] == max_wordle]
+        # Find Wordle champions
+        wordle_counts = games_data.get('Wordle', {})
+        if wordle_counts:
+            max_wordle = max(wordle_counts.values())
+            wordle_winners = [p for p, count in wordle_counts.items() if count == max_wordle]
+        else:
+            wordle_winners = ['No data']
 
         winner_rows.append([month, ' / '.join(sorted(conn_winners)), ' / '.join(sorted(wordle_winners))])
 
@@ -191,6 +234,6 @@ def run_stats(service, sheet_id: str) -> None:
     print(f"  {len(monthly_rows)} monthly stat rows written to '{MONTHLY_TAB}'.")
 
     print("Computing monthly winners...")
-    winner_rows = compute_monthly_winners(monthly_rows)
+    winner_rows = compute_monthly_winners(service, sheet_id)
     _clear_and_write(service, sheet_id, WINNER_TAB, ['Month', 'Connections', 'Wordle'], winner_rows)
     print(f"  {len(winner_rows)} winner rows written to '{WINNER_TAB}'.")
